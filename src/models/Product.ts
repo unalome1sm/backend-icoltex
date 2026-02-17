@@ -14,6 +14,8 @@ export interface IProduct extends Document {
   precioMetro?: number;
   precioKilos?: number;
   activo: boolean;
+  /** URLs de imágenes (ej. enlaces de Google Drive) para mostrar en el detalle del producto */
+  imageUrls?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -47,6 +49,10 @@ const ProductSchema = new Schema<IProduct>(
     activo: {
       type: Boolean,
       default: true,
+    },
+    imageUrls: {
+      type: [String],
+      default: undefined,
     },
   },
   {
