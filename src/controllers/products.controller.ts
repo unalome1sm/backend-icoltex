@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import { Product } from '../models/Product';
 
 export const getProducts = async (req: Request, res: Response) => {
@@ -96,7 +97,11 @@ export const getProductClasses = async (_req: Request, res: Response) => {
 
 export const getProductById = async (req: Request, res: Response) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const { id } = req.params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id) || String(id).length !== 24) {
+      return res.status(404).json({ error: 'Producto no encontrado' });
+    }
+    const product = await Product.findById(id);
     if (!product) {
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
