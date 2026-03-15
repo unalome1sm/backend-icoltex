@@ -70,7 +70,8 @@ export async function loginRequestHandler(req: Request, res: Response) {
     }
     const result = await loginRequest(email.trim(), password);
     if (!result.ok) {
-      return res.status(400).json({ error: result.message });
+      const isAdminAccount = result.message.includes('administrador');
+      return res.status(isAdminAccount ? 403 : 400).json({ error: result.message });
     }
     res.json({ message: result.message });
   } catch (e: any) {
@@ -89,7 +90,8 @@ export async function loginVerifyHandler(req: Request, res: Response) {
     }
     const result = await loginVerify(email.trim(), code.trim());
     if (!result.ok) {
-      return res.status(400).json({ error: result.message });
+      const isAdminAccount = result.message.includes('administrador');
+      return res.status(isAdminAccount ? 403 : 400).json({ error: result.message });
     }
     res.cookie(AUTH_COOKIE_NAME, result.token, COOKIE_OPTIONS);
     res.json({ message: result.message, user: result.user, token: result.token });

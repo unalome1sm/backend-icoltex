@@ -130,12 +130,17 @@ export async function loginRequest(email: string, password: string): Promise<{ o
   if (!isEmailConfigured()) {
     return { ok: false, message: 'Servicio de correo no configurado' };
   }
-  const user = await User.findOne({ email: email.toLowerCase().trim(), activo: true });
+  const emailNorm = email.toLowerCase().trim();
+  const admin = await Admin.findOne({ email: emailNorm, activo: true });
+  if (admin) {
+    return { ok: false, message: 'Esta cuenta es de administrador. Use el acceso de administración.' };
+  }
+  const user = await User.findOne({ email: emailNorm, activo: true });
   if (!user || !(await comparePassword(password, user.passwordHash))) {
     return { ok: false, message: 'Correo o contraseña incorrectos' };
   }
   const recent = await AuthOtp.findOne({
-    email: email.toLowerCase().trim(),
+    email: emailNorm,
     purpose: 'login',
     usedAt: { $exists: false },
     expiresAt: { $gt: new Date() },
@@ -147,7 +152,7 @@ export async function loginRequest(email: string, password: string): Promise<{ o
   const codeHash = await bcrypt.hash(code, SALT_ROUNDS);
   const expiresAt = new Date(Date.now() + OTP_TTL_MIN * 60 * 1000);
   await AuthOtp.create({
-    email: email.toLowerCase().trim(),
+    email: emailNorm,
     codeHash,
     purpose: 'login',
     expiresAt,
@@ -157,8 +162,13 @@ export async function loginRequest(email: string, password: string): Promise<{ o
 }
 
 export async function loginVerify(email: string, code: string): Promise<{ ok: boolean; user?: { id: string; email: string }; token?: string; message: string }> {
+  const emailNorm = email.toLowerCase().trim();
+  const admin = await Admin.findOne({ email: emailNorm, activo: true });
+  if (admin) {
+    return { ok: false, message: 'Esta cuenta es de administrador. Use el acceso de administración.' };
+  }
   const otp = await AuthOtp.findOne({
-    email: email.toLowerCase().trim(),
+    email: emailNorm,
     purpose: 'login',
     usedAt: { $exists: false },
     expiresAt: { $gt: new Date() },
@@ -171,7 +181,7 @@ export async function loginVerify(email: string, code: string): Promise<{ ok: bo
     await AuthOtp.updateOne({ _id: otp._id }, { $inc: { attempts: 1 } });
     return { ok: false, message: 'Código incorrecto' };
   }
-  const user = await User.findOne({ email: email.toLowerCase().trim(), activo: true });
+  const user = await User.findOne({ email: emailNorm, activo: true });
   if (!user) {
     return { ok: false, message: 'Cuenta no encontrada' };
   }
