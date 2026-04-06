@@ -54,6 +54,35 @@ export const getProducts = async (req: Request, res: Response) => {
 
     const total = await Product.countDocuments(filter);
 
+    const productosPlano = products.map((doc) =>
+      doc.toObject({ flattenMaps: true, virtuals: false })
+    );
+    console.log(
+      '[Products API] GET /api/products — payload para análisis\n',
+      JSON.stringify(
+        {
+          query: {
+            activo,
+            q,
+            category,
+            classFamily,
+            precioMin,
+            precioMax,
+            page: pageNum,
+            limit: limitNum,
+          },
+          pagination: {
+            total,
+            totalPages: Math.ceil(total / limitNum),
+            returned: productosPlano.length,
+          },
+          products: productosPlano,
+        },
+        null,
+        2
+      )
+    );
+
     res.json({
       products,
       pagination: {
