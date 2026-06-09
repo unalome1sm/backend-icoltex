@@ -113,6 +113,7 @@ export async function registerVerify(email: string, code: string, password: stri
   const user = await User.create({
     email: email.toLowerCase().trim(),
     passwordHash,
+    authProvider: 'local',
     nombre: nombre?.trim() || undefined,
     activo: true,
   });
@@ -136,7 +137,11 @@ export async function loginRequest(email: string, password: string): Promise<{ o
     return { ok: false, message: 'Esta cuenta es de administrador. Use el acceso de administración.' };
   }
   const user = await User.findOne({ email: emailNorm, activo: true });
-  if (!user || !(await comparePassword(password, user.passwordHash))) {
+  if (
+    !user ||
+    !user.passwordHash ||
+    !(await comparePassword(password, user.passwordHash))
+  ) {
     return { ok: false, message: 'Correo o contraseña incorrectos' };
   }
   const recent = await AuthOtp.findOne({

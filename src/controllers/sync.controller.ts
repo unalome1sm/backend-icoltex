@@ -4,17 +4,24 @@ import { syncClientsFromIcoltex } from '../services/syncClients.service';
 import { syncProductsFromIcoltex } from '../services/syncProducts.service';
 import { syncClassesFromIcoltex } from '../services/syncClasses.service';
 import { syncCategoriesFromIcoltex } from '../services/syncCategories.service';
+import {
+  getCatalogVitrinaSyncMeta,
+  syncCatalogVitrinaFromWebhook,
+} from '../services/syncCatalogVitrina.service';
 
 /**
  * GET /api/sync/status
  * Indica si la API Icoltex está configurada (sin probar credenciales).
  */
-export const getSyncStatus = (req: Request, res: Response) => {
+export const getSyncStatus = async (_req: Request, res: Response) => {
   const configured = isIcoltexApiConfigured();
+  const catalogVitrina = await getCatalogVitrinaSyncMeta();
+
   res.json({
     configured,
+    catalogVitrina,
     message: configured
-      ? 'API Icoltex configurada. Puedes usar POST /api/sync/clients para sincronizar clientes.'
+      ? 'API Icoltex configurada. Sincroniza precios (POST /api/sync/products) y vitrina (POST /api/sync/catalog-vitrina).'
       : 'Faltan ICOLTEX_API_URL, ICOLTEX_API_USER o ICOLTEX_API_PASSWORD en .env',
   });
 };
@@ -151,6 +158,46 @@ export const syncCategories = (req: Request, res: Response) => {
         res.status(500).json({
           error: 'Error al sincronizar categorias',
           message: err?.message ?? String(err),
+        });
+      }
+    });
+};
+
+/**
+ * POST /api/sync/catalog-vitrina
+ * Sincroniza catálogo vitrina (caracterisiticas_items_icoltex) a MongoDB.
+ */
+export const syncCatalogVitrina = (req: Request, res: Response) => {
+  if (!isIcoltexApiConfigured()) {
+    return res.status(503).json({
+      error: 'API Icoltex no configurada',
+      message: 'Configura ICOLTEX_API_URL, ICOLTEX_API_USER e ICOLTEX_API_PASSWORD en .env',
+    });
+  }
+
+  syncCatalogVitrinaFromWebhook()
+    .then((result) => {
+      if (res.headersSent) return;
+      console.log(
+        '[Sync] Catálogo vitrina:',
+        result.totalFetched,
+        'grupos,',
+        result.variantCount,
+        'variantes'
+      );
+      const body = {
+        message: 'Sincronización de catálogo vitrina completada',
+        ...result,
+      };
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.status(200).end(JSON.stringify(body));
+    })
+    .catch((err: unknown) => {
+      console.error('Sync catalog vitrina error:', err);
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: 'Error al sincronizar catálogo vitrina',
+          message: err instanceof Error ? err.message : String(err),
         });
       }
     });

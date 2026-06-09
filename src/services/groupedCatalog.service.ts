@@ -1,9 +1,24 @@
 /**
- * Agrupa productos Mongo (sincronizados desde items_icoltex) por nombre de vitrina
- * derivado de `nombre` (ItemName): BASE antes del primer ":" + clase + categoría.
+ * Catálogo agrupado para la tienda.
+ * Fuente principal: vitrina Tangara (caracteristicas) + precios Mongo (items_icoltex).
+ * Fallback legacy: agrupación derivada de Product.nombre si no hay vitrina sincronizada.
  */
 import type { FilterQuery } from 'mongoose';
 import { Product, type IProduct } from '../models/Product';
+import { getCatalogVitrinaSyncMeta } from './syncCatalogVitrina.service';
+import {
+  groupMatchesCatalogFilter,
+  sortCatalogGroups,
+  variantDisplayPrice,
+  variantMatchesCatalogFilter,
+} from '../utils/catalogFilterApply';
+import {
+  buildMergedCatalogRows,
+  fetchMergedCatalogPage,
+  fetchMergedProductByGroupId,
+  type MergedProductRow,
+} from './mergedCatalog.service';
+import { decodeGroupId, encodeGroupId } from './catalogVitrinaWebhook.service';
 
 export type GroupedProductVariant = {
   mongoId: string;
@@ -20,6 +35,7 @@ export type GroupedProductVariant = {
   recomendacionesUsos?: string;
   recomendacionesCuidados?: string;
   unidadMedida?: string;
+  tienePrecio?: boolean;
 };
 
 export type GroupedProductRow = {
@@ -33,6 +49,26 @@ export type GroupedProductRow = {
   variantCount: number;
 };
 
+export { decodeGroupId, encodeGroupId };
+
+export type CatalogSortOption = 'relevance' | 'price-asc' | 'price-desc' | 'name';
+
+export type GroupedCatalogFilter = {
+  activo?: boolean;
+  /** @deprecated Usar categories */
+  category?: string;
+  categories?: string[];
+  classFamily?: string;
+  colors?: string[];
+  q?: string;
+  precioMin?: number;
+  precioMax?: number;
+  inStock?: boolean;
+  sort?: CatalogSortOption;
+};
+
+// --- Legacy fallback (agrupación por nombre en Product) ---
+
 function normalizeKeyPart(s: string | undefined): string {
   return (s ?? '')
     .trim()
@@ -40,20 +76,6 @@ function normalizeKeyPart(s: string | undefined): string {
     .toLowerCase()
     .normalize('NFD')
     .replace(/\p{M}/gu, '');
-}
-
-/** Codifica groupKey para URL (base64url). */
-export function encodeGroupId(groupKey: string): string {
-  return Buffer.from(groupKey, 'utf8').toString('base64url');
-}
-
-export function decodeGroupId(groupId: string): string | null {
-  try {
-    const key = Buffer.from(groupId, 'base64url').toString('utf8');
-    return key.length > 0 ? key : null;
-  } catch {
-    return null;
-  }
 }
 
 function parseBaseFromNombre(nombre: string): string {
@@ -68,7 +90,6 @@ function extractCodigoTono(nombre: string): string | undefined {
   return m ? m[1] : undefined;
 }
 
-/** Si Colores es solo "TIPO X", el tono real suele ir en el nombre tras ":". */
 function colorLabelFromNombre(nombre: string, colores?: string): string {
   const c = colores?.trim();
   if (c && !/^tipo\s+[a-z]\s*$/i.test(c)) return c;
@@ -83,6 +104,10 @@ function colorLabelFromNombre(nombre: string, colores?: string): string {
 function productToVariant(doc: IProduct): GroupedProductVariant {
   const plain = doc.toObject({ flattenMaps: true });
   const nombre = String(plain.nombre ?? '');
+  const tienePrecio =
+    (plain.precioMetro != null && !Number.isNaN(plain.precioMetro)) ||
+    (plain.precioKilos != null && !Number.isNaN(plain.precioKilos));
+
   return {
     mongoId: String(plain._id),
     codigo: plain.codigo,
@@ -98,10 +123,11 @@ function productToVariant(doc: IProduct): GroupedProductVariant {
     recomendacionesUsos: plain.recomendacionesUsos,
     recomendacionesCuidados: plain.recomendacionesCuidados,
     unidadMedida: plain.unidadMedida,
+    tienePrecio,
   };
 }
 
-function buildGroupKey(doc: IProduct): string {
+function buildLegacyGroupKey(doc: IProduct): string {
   const plain = doc.toObject({ flattenMaps: true });
   const base = parseBaseFromNombre(String(plain.nombre ?? ''));
   return [
@@ -110,32 +136,6 @@ function buildGroupKey(doc: IProduct): string {
     normalizeKeyPart(base),
   ].join('|');
 }
-
-function sortVariantes(a: GroupedProductVariant, b: GroupedProductVariant): number {
-  const byColor = a.colorLabel.localeCompare(b.colorLabel, 'es', { sensitivity: 'base' });
-  if (byColor !== 0) return byColor;
-  const ta = a.codigoTono ?? '';
-  const tb = b.codigoTono ?? '';
-  if (ta !== tb) return ta.localeCompare(tb, undefined, { numeric: true });
-  return a.codigo.localeCompare(b.codigo);
-}
-
-function sortGroups(a: GroupedProductRow, b: GroupedProductRow): number {
-  const ca = (a.claseFamilia ?? '').localeCompare(b.claseFamilia ?? '', 'es', { sensitivity: 'base' });
-  if (ca !== 0) return ca;
-  const cc = (a.categoria ?? '').localeCompare(b.categoria ?? '', 'es', { sensitivity: 'base' });
-  if (cc !== 0) return cc;
-  return a.nombreVitrina.localeCompare(b.nombreVitrina, 'es', { sensitivity: 'base' });
-}
-
-export type GroupedCatalogFilter = {
-  activo?: boolean;
-  category?: string;
-  classFamily?: string;
-  q?: string;
-  precioMin?: number;
-  precioMax?: number;
-};
 
 function buildProductFilter(f: GroupedCatalogFilter): FilterQuery<IProduct> {
   const filter: FilterQuery<IProduct> = {};
@@ -172,11 +172,11 @@ function buildProductFilter(f: GroupedCatalogFilter): FilterQuery<IProduct> {
   return filter;
 }
 
-export function groupProducts(docs: IProduct[]): GroupedProductRow[] {
+function groupProductsLegacy(docs: IProduct[]): GroupedProductRow[] {
   const map = new Map<string, { groupKey: string; docs: IProduct[] }>();
 
   for (const doc of docs) {
-    const groupKey = buildGroupKey(doc);
+    const groupKey = buildLegacyGroupKey(doc);
     let entry = map.get(groupKey);
     if (!entry) {
       entry = { groupKey, docs: [] };
@@ -191,8 +191,10 @@ export function groupProducts(docs: IProduct[]): GroupedProductRow[] {
     const first = groupDocs[0];
     const plain = first.toObject({ flattenMaps: true });
     const nombreVitrina = parseBaseFromNombre(String(plain.nombre ?? plain.codigo ?? ''));
-    const variantes = groupDocs.map(productToVariant).sort(sortVariantes);
-    const precios = variantes.map((v) => v.precioMetro).filter((p): p is number => p != null && !Number.isNaN(p));
+    const variantes = groupDocs.map(productToVariant);
+    const precios = variantes
+      .map(variantDisplayPrice)
+      .filter((p): p is number => p != null && !Number.isNaN(p));
     const precioDesde = precios.length ? Math.min(...precios) : undefined;
 
     rows.push({
@@ -207,36 +209,112 @@ export function groupProducts(docs: IProduct[]): GroupedProductRow[] {
     });
   }
 
-  rows.sort(sortGroups);
+  rows.sort((a, b) => {
+    const ca = (a.claseFamilia ?? '').localeCompare(b.claseFamilia ?? '', 'es', { sensitivity: 'base' });
+    if (ca !== 0) return ca;
+    const cc = (a.categoria ?? '').localeCompare(b.categoria ?? '', 'es', { sensitivity: 'base' });
+    if (cc !== 0) return cc;
+    return a.nombreVitrina.localeCompare(b.nombreVitrina, 'es', { sensitivity: 'base' });
+  });
+
   return rows;
 }
 
-export async function fetchGroupedCatalogRows(filter: GroupedCatalogFilter): Promise<GroupedProductRow[]> {
+function applyCatalogFiltersToRows(
+  rows: GroupedProductRow[],
+  filter: GroupedCatalogFilter
+): GroupedProductRow[] {
+  const requirePrice = filter.activo !== false;
+  const filtered = rows
+    .filter((group) => groupMatchesCatalogFilter(group, filter))
+    .map((group) => {
+      const variantes = group.variantes.filter((v) =>
+        variantMatchesCatalogFilter(
+          { ...v, tienePrecio: v.tienePrecio ?? Boolean(v.precioMetro ?? v.precioKilos) },
+          filter,
+          requirePrice
+        )
+      );
+      const precios = variantes
+        .map(variantDisplayPrice)
+        .filter((p): p is number => p != null && !Number.isNaN(p));
+      return {
+        ...group,
+        variantes,
+        variantCount: variantes.length,
+        precioDesde: precios.length ? Math.min(...precios) : undefined,
+      };
+    })
+    .filter((group) => group.variantes.length > 0);
+
+  if (filter.sort && filter.sort !== 'relevance') {
+    return sortCatalogGroups(filtered, filter.sort);
+  }
+  return filtered;
+}
+
+async function fetchLegacyGroupedRows(filter: GroupedCatalogFilter): Promise<GroupedProductRow[]> {
   const mongoFilter = buildProductFilter(filter);
   const docs = await Product.find(mongoFilter).sort({ nombre: 1 });
-  return groupProducts(docs);
+  return applyCatalogFiltersToRows(groupProductsLegacy(docs), filter);
+}
+
+function mergedToGrouped(row: MergedProductRow): GroupedProductRow {
+  return row;
+}
+
+async function useMergedCatalog(): Promise<boolean> {
+  const meta = await getCatalogVitrinaSyncMeta();
+  return meta.groupCount > 0;
+}
+
+export async function fetchGroupedCatalogRows(filter: GroupedCatalogFilter): Promise<GroupedProductRow[]> {
+  if (await useMergedCatalog()) {
+    return (await buildMergedCatalogRows(filter)).map(mergedToGrouped);
+  }
+  return fetchLegacyGroupedRows(filter);
 }
 
 export async function fetchGroupedCatalogPage(
   filter: GroupedCatalogFilter,
   page: number,
   limit: number
-): Promise<{ groups: GroupedProductRow[]; total: number; totalPages: number }> {
-  const all = await fetchGroupedCatalogRows(filter);
+): Promise<{ groups: GroupedProductRow[]; total: number; totalPages: number; source?: string }> {
+  if (await useMergedCatalog()) {
+    const result = await fetchMergedCatalogPage(filter, page, limit);
+    return {
+      groups: result.groups.map(mergedToGrouped),
+      total: result.total,
+      totalPages: result.totalPages,
+      source: result.source,
+    };
+  }
+
+  const all = await fetchLegacyGroupedRows(filter);
   const total = all.length;
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const safePage = Math.min(Math.max(1, page), totalPages);
   const skip = (safePage - 1) * limit;
-  const groups = all.slice(skip, skip + limit);
-  return { groups, total, totalPages };
+
+  return {
+    groups: all.slice(skip, skip + limit),
+    total,
+    totalPages,
+    source: 'legacy-products',
+  };
 }
 
 export async function fetchGroupedProductByGroupId(
   groupId: string,
   filter: GroupedCatalogFilter
 ): Promise<GroupedProductRow | null> {
+  if (await useMergedCatalog()) {
+    const row = await fetchMergedProductByGroupId(groupId, filter);
+    return row ? mergedToGrouped(row) : null;
+  }
+
   const groupKey = decodeGroupId(groupId);
   if (!groupKey) return null;
-  const all = await fetchGroupedCatalogRows(filter);
+  const all = await fetchLegacyGroupedRows(filter);
   return all.find((g) => g.groupKey === groupKey) ?? null;
 }

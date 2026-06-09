@@ -1,8 +1,12 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
+export type AuthProvider = 'local' | 'google';
+
 export interface IUser extends Document {
   email: string;
-  passwordHash: string;
+  passwordHash?: string;
+  authProvider: AuthProvider;
+  googleId?: string;
   nombre?: string;
   segundoNombre?: string;
   apellidos?: string;
@@ -31,7 +35,17 @@ const UserSchema = new Schema<IUser>(
     },
     passwordHash: {
       type: String,
-      required: [true, 'La contraseña es obligatoria'],
+    },
+    authProvider: {
+      type: String,
+      enum: ['local', 'google'],
+      default: 'local',
+    },
+    googleId: {
+      type: String,
+      trim: true,
+      sparse: true,
+      unique: true,
     },
     nombre: {
       type: String,
@@ -89,5 +103,6 @@ const UserSchema = new Schema<IUser>(
 
 UserSchema.index({ email: 1 });
 UserSchema.index({ activo: 1 });
+UserSchema.index({ googleId: 1 }, { sparse: true });
 
 export const User = mongoose.model<IUser>('User', UserSchema);

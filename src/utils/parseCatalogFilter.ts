@@ -1,0 +1,64 @@
+import type { Request } from 'express';
+import type { CatalogSortOption, GroupedCatalogFilter } from '../services/groupedCatalog.service';
+import { normalizeFilterList, parseListParam } from '../services/catalogFilterMeta.service';
+
+const SORT_VALUES: CatalogSortOption[] = ['relevance', 'price-asc', 'price-desc', 'name'];
+
+export function parseCatalogFilterFromRequest(req: Request): GroupedCatalogFilter {
+  const {
+    category,
+    categories,
+    classFamily,
+    color,
+    colors,
+    q,
+    activo,
+    precioMin,
+    precioMax,
+    inStock,
+    sort,
+  } = req.query;
+
+  const filter: GroupedCatalogFilter = {};
+
+  if (activo === 'true') filter.activo = true;
+  if (activo === 'false') filter.activo = false;
+
+  if (typeof classFamily === 'string' && classFamily.trim()) {
+    filter.classFamily = classFamily.trim();
+  }
+
+  const categoryList = [
+    ...parseListParam(categories),
+    ...parseListParam(category),
+  ];
+  const normalizedCategories = normalizeFilterList(categoryList);
+  if (normalizedCategories) {
+    filter.categories = normalizedCategories;
+    filter.category = normalizedCategories[0];
+  }
+
+  const colorList = [...parseListParam(colors), ...parseListParam(color)];
+  filter.colors = normalizeFilterList(colorList);
+
+  if (typeof q === 'string' && q.trim()) filter.q = q.trim();
+
+  if (precioMin !== undefined && precioMin !== '') {
+    const n = Number(precioMin);
+    if (!Number.isNaN(n)) filter.precioMin = n;
+  }
+  if (precioMax !== undefined && precioMax !== '') {
+    const n = Number(precioMax);
+    if (!Number.isNaN(n)) filter.precioMax = n;
+  }
+
+  if (inStock === 'true' || inStock === '1') {
+    filter.inStock = true;
+  }
+
+  if (typeof sort === 'string' && SORT_VALUES.includes(sort as CatalogSortOption)) {
+    filter.sort = sort as CatalogSortOption;
+  }
+
+  return filter;
+}

@@ -11,6 +11,7 @@ import {
   verifyToken,
   AUTH_COOKIE_NAME,
 } from '../services/auth.service';
+import { authenticateWithGoogle } from '../services/googleAuth.service';
 
 const COOKIE_OPTIONS = {
   httpOnly: true,
@@ -133,6 +134,31 @@ export async function adminLoginVerifyHandler(req: Request, res: Response) {
     res.json({ message: result.message, admin: result.admin, token: result.token });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || 'Error al verificar login admin' });
+  }
+}
+
+export async function googleAuthHandler(req: Request, res: Response) {
+  try {
+    const { idToken } = req.body || {};
+    if (!idToken || typeof idToken !== 'string') {
+      return res.status(400).json({ error: 'Token de Google obligatorio' });
+    }
+
+    const result = await authenticateWithGoogle(idToken.trim());
+    if (!result.ok) {
+      const isAdminAccount = result.message.includes('administrador');
+      return res.status(isAdminAccount ? 403 : 400).json({ error: result.message });
+    }
+
+    res.cookie(AUTH_COOKIE_NAME, result.token, COOKIE_OPTIONS);
+    res.json({
+      message: result.message,
+      user: result.user,
+      token: result.token,
+      isNewUser: result.isNewUser,
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Error al autenticar con Google' });
   }
 }
 

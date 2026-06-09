@@ -4,6 +4,7 @@ import {
   registerVerifyHandler,
   loginRequestHandler,
   loginVerifyHandler,
+  googleAuthHandler,
   adminLoginRequestHandler,
   adminLoginVerifyHandler,
   logoutHandler,
@@ -17,6 +18,7 @@ router.post('/register/request', registerRequestHandler);
 router.post('/register/verify', registerVerifyHandler);
 router.post('/login/request', loginRequestHandler);
 router.post('/login/verify', loginVerifyHandler);
+router.post('/google', googleAuthHandler);
 router.post('/admin/login/request', adminLoginRequestHandler);
 router.post('/admin/login/verify', adminLoginVerifyHandler);
 router.post('/logout', logoutHandler);

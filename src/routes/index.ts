@@ -10,6 +10,7 @@ import productsRoutes from './products.routes';
 import usersRoutes from './users.routes';
 import syncRoutes from './sync.routes';
 import catalogRoutes from './catalog.routes';
+import driveRoutes from './drive.routes';
 
 const router = Router();
 
@@ -24,6 +25,7 @@ router.use('/products', productsRoutes);
 router.use('/users', usersRoutes);
 router.use('/sync', syncRoutes);
 router.use('/catalog', catalogRoutes);
+router.use('/drive', driveRoutes);
 
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'API Icoltex funcionando correctamente' });
