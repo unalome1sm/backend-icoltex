@@ -15,6 +15,8 @@ export type GroupFilterable = {
   claseFamilia?: string;
   categoria?: string;
   variantes: VariantFilterable[];
+  esDestacado?: boolean;
+  esNovedad?: boolean;
 };
 
 export function variantDisplayPrice(v: VariantFilterable): number | undefined {
@@ -64,6 +66,9 @@ export function groupMatchesCatalogFilter(
     );
     if (!inGroup && !inVariant) return false;
   }
+
+  if (filter.destacado === true && !group.esDestacado) return false;
+  if (filter.novedad === true && !group.esNovedad) return false;
 
   return true;
 }

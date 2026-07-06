@@ -12,7 +12,8 @@
     "test:direct": "npx tsx src/scripts/testDirectConnection.ts",
     "test:connection:diagnostic": "npx tsx src/scripts/testConnectionDiagnostic.ts",
     "fetch:clientes": "npx tsx src/scripts/fetchClientesIcoltex.ts",
-    "create:admin": "npx tsx src/scripts/createAdmin.ts"
+    "create:admin": "npx tsx src/scripts/createAdmin.ts",
+    "seed:reviews": "npx tsx src/scripts/seedProductReviews.ts"
   },
   "keywords": [],
   "author": "",

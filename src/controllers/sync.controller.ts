@@ -8,6 +8,7 @@ import {
   getCatalogVitrinaSyncMeta,
   syncCatalogVitrinaFromWebhook,
 } from '../services/syncCatalogVitrina.service';
+import { syncCatalogFullFromSap } from '../services/syncCatalogFull.service';
 
 /**
  * GET /api/sync/status
@@ -21,7 +22,7 @@ export const getSyncStatus = async (_req: Request, res: Response) => {
     configured,
     catalogVitrina,
     message: configured
-      ? 'API Icoltex configurada. Sincroniza precios (POST /api/sync/products) y vitrina (POST /api/sync/catalog-vitrina).'
+      ? 'API Icoltex configurada. Sincroniza catálogo completo (POST /api/sync/catalog-full), vitrina (POST /api/sync/catalog-vitrina) o precios (POST /api/sync/products).'
       : 'Faltan ICOLTEX_API_URL, ICOLTEX_API_USER o ICOLTEX_API_PASSWORD en .env',
   });
 };
@@ -165,7 +166,7 @@ export const syncCategories = (req: Request, res: Response) => {
 
 /**
  * POST /api/sync/catalog-vitrina
- * Sincroniza catálogo vitrina (caracterisiticas_items_icoltex) a MongoDB.
+ * Sincroniza catálogo vitrina (info-items-x-ref) a MongoDB.
  */
 export const syncCatalogVitrina = (req: Request, res: Response) => {
   if (!isIcoltexApiConfigured()) {
@@ -197,6 +198,42 @@ export const syncCatalogVitrina = (req: Request, res: Response) => {
       if (!res.headersSent) {
         res.status(500).json({
           error: 'Error al sincronizar catálogo vitrina',
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    });
+};
+
+/**
+ * POST /api/sync/catalog-full
+ * Sincroniza vitrina (info-items-x-ref) + productos (items_icoltex) y reporta cruces.
+ */
+export const syncCatalogFull = (req: Request, res: Response) => {
+  if (!isIcoltexApiConfigured()) {
+    return res.status(503).json({
+      error: 'API Icoltex no configurada',
+      message: 'Configura ICOLTEX_API_URL, ICOLTEX_API_USER e ICOLTEX_API_PASSWORD en .env',
+    });
+  }
+
+  syncCatalogFullFromSap()
+    .then((result) => {
+      if (res.headersSent) return;
+      console.log(
+        '[Sync] Catálogo completo:',
+        result.vitrina.totalFetched,
+        'grupos,',
+        result.products.created + result.products.updated,
+        'productos'
+      );
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.status(200).end(JSON.stringify(result));
+    })
+    .catch((err: unknown) => {
+      console.error('Sync catalog full error:', err);
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: 'Error al sincronizar catálogo completo',
           message: err instanceof Error ? err.message : String(err),
         });
       }

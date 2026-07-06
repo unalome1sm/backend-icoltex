@@ -11,6 +11,7 @@ export const ICOLTEX_ENDPOINTS = {
   items: '/items_icoltex',
   clases: '/clases_icoltex',
   categorias: '/categorias_icoltex',
+  infoItemsXRef: '/info-items-x-ref',
 } as const;
 
 export type IcoltexEndpointKey = keyof typeof ICOLTEX_ENDPOINTS;

@@ -17,6 +17,8 @@ export function parseCatalogFilterFromRequest(req: Request): GroupedCatalogFilte
     precioMax,
     inStock,
     sort,
+    destacado,
+    novedad,
   } = req.query;
 
   const filter: GroupedCatalogFilter = {};
@@ -58,6 +60,13 @@ export function parseCatalogFilterFromRequest(req: Request): GroupedCatalogFilte
 
   if (typeof sort === 'string' && SORT_VALUES.includes(sort as CatalogSortOption)) {
     filter.sort = sort as CatalogSortOption;
+  }
+
+  if (destacado === 'true' || destacado === '1') {
+    filter.destacado = true;
+  }
+  if (novedad === 'true' || novedad === '1') {
+    filter.novedad = true;
   }
 
   return filter;

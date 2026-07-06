@@ -1,8 +1,8 @@
 /**
- * Catálogo de tienda: estructura vitrina (caracterisiticas_items_icoltex en Mongo)
- * + precios e imágenes (items_icoltex → colección Product).
+ * Catálogo de tienda: estructura vitrina (info-items-x-ref en Mongo)
+ * + precios e imágenes SKU (items_icoltex → colección Product).
  */
-import { CatalogVitrinaGroup, type ICatalogVitrinaGroup } from '../models/CatalogVitrinaGroup';
+import { CatalogVitrinaGroup, type ICatalogVitrinaFiltros, type ICatalogVitrinaGroup } from '../models/CatalogVitrinaGroup';
 import { Product, type IProduct } from '../models/Product';
 import { decodeGroupId, encodeGroupId } from './catalogVitrinaWebhook.service';
 import type { GroupedCatalogFilter } from './groupedCatalog.service';
@@ -37,9 +37,13 @@ export type MergedProductRow = {
   nombreVitrina: string;
   claseFamilia?: string;
   categoria?: string;
+  imageUrls?: string[];
+  filtros?: ICatalogVitrinaFiltros[];
   variantes: MergedProductVariant[];
   precioDesde?: number;
   variantCount: number;
+  esDestacado?: boolean;
+  esNovedad?: boolean;
 };
 
 function extractCodigoTono(nombre: string): string | undefined {
@@ -55,9 +59,19 @@ function hasPrice(product: IProduct | undefined): boolean {
   );
 }
 
+function resolveVariantImageUrls(
+  product?: IProduct,
+  groupImageUrls?: string[]
+): string[] | undefined {
+  if (product?.imageUrls?.length) return product.imageUrls;
+  if (groupImageUrls?.length) return groupImageUrls;
+  return undefined;
+}
+
 function mergeVariant(
   vitrinaVariant: ICatalogVitrinaGroup['variantes'][number],
-  product?: IProduct
+  product?: IProduct,
+  groupImageUrls?: string[]
 ): MergedProductVariant {
   const plain = product?.toObject({ flattenMaps: true });
   const itemName = vitrinaVariant.itemNameCompleto;
@@ -72,8 +86,8 @@ function mergeVariant(
     precioMetro: plain?.precioMetro,
     precioKilos: plain?.precioKilos,
     activo: vitrinaVariant.activo,
-    imageUrls: plain?.imageUrls,
-    caracteristica: plain?.caracteristica,
+    imageUrls: resolveVariantImageUrls(product, groupImageUrls),
+    caracteristica: vitrinaVariant.caracteristica ?? plain?.caracteristica,
     recomendacionesUsos: plain?.recomendacionesUsos,
     recomendacionesCuidados: plain?.recomendacionesCuidados,
     unidadMedida: vitrinaVariant.unidadMedida ?? plain?.unidadMedida,
@@ -111,12 +125,28 @@ async function loadProductsByCodigo(): Promise<Map<string, IProduct>> {
   return map;
 }
 
+function buildVitrinaMongoQuery(filter: GroupedCatalogFilter): Record<string, unknown> {
+  const q: Record<string, unknown> = {};
+  if (filter.destacado === true) q.esDestacado = true;
+  if (filter.novedad === true) q.esNovedad = true;
+  return q;
+}
+
+function vitrinaSort(filter: GroupedCatalogFilter): Record<string, 1 | -1> {
+  if (filter.destacado === true || filter.novedad === true) {
+    return { merchandisingUpdatedAt: -1, nombreVitrina: 1 };
+  }
+  return { nombreVitrina: 1 };
+}
+
 export async function buildMergedCatalogRows(
   filter: GroupedCatalogFilter,
   options?: { requirePrice?: boolean }
 ): Promise<MergedProductRow[]> {
   const requirePrice = options?.requirePrice ?? filter.activo !== false;
-  const vitrinaGroups = await CatalogVitrinaGroup.find({}).sort({ nombreVitrina: 1 });
+  const vitrinaGroups = await CatalogVitrinaGroup.find(buildVitrinaMongoQuery(filter)).sort(
+    vitrinaSort(filter)
+  );
 
   if (vitrinaGroups.length === 0) {
     return [];
@@ -128,8 +158,10 @@ export async function buildMergedCatalogRows(
   for (const group of vitrinaGroups) {
     if (!groupMatchesCatalogFilter(group, filter)) continue;
 
+    const groupImageUrls = group.imageUrls?.length ? group.imageUrls : undefined;
+
     const variantes = group.variantes
-      .map((v) => mergeVariant(v, productsByCodigo.get(v.codigo)))
+      .map((v) => mergeVariant(v, productsByCodigo.get(v.codigo), groupImageUrls))
       .filter((v) => variantMatchesCatalogFilter(v, filter, requirePrice))
       .sort(sortVariantes);
 
@@ -140,15 +172,23 @@ export async function buildMergedCatalogRows(
       .filter((p): p is number => p != null && !Number.isNaN(p));
     const precioDesde = precios.length ? Math.min(...precios) : undefined;
 
+    const rowImageUrls =
+      groupImageUrls ??
+      variantes.find((v) => v.imageUrls?.length)?.imageUrls;
+
     rows.push({
       groupId: encodeGroupId(group.groupKey),
       groupKey: group.groupKey,
       nombreVitrina: group.nombreVitrina,
       claseFamilia: group.claseFamilia || undefined,
       categoria: group.categoria || undefined,
+      imageUrls: rowImageUrls,
+      filtros: group.filtros?.length ? group.filtros : undefined,
       variantes,
       precioDesde,
       variantCount: variantes.length,
+      esDestacado: Boolean(group.esDestacado),
+      esNovedad: Boolean(group.esNovedad),
     });
   }
 
@@ -175,7 +215,7 @@ export async function fetchMergedCatalogPage(
     groups: all.slice(skip, skip + limit),
     total,
     totalPages,
-    source: 'catalog-vitrina+products',
+    source: 'info-items-x-ref+items_icoltex',
   };
 }
 

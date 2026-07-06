@@ -1,6 +1,6 @@
 /**
  * Catálogo agrupado para la tienda.
- * Fuente principal: vitrina Tangara (caracteristicas) + precios Mongo (items_icoltex).
+ * Fuente principal: vitrina Tangara (info-items-x-ref) + precios/imágenes SKU (items_icoltex).
  * Fallback legacy: agrupación derivada de Product.nombre si no hay vitrina sincronizada.
  */
 import type { FilterQuery } from 'mongoose';
@@ -44,9 +44,13 @@ export type GroupedProductRow = {
   nombreVitrina: string;
   claseFamilia?: string;
   categoria?: string;
+  imageUrls?: string[];
+  filtros?: { filtro1: string[]; filtro2: string[]; filtro3: string[] }[];
   variantes: GroupedProductVariant[];
   precioDesde?: number;
   variantCount: number;
+  esDestacado?: boolean;
+  esNovedad?: boolean;
 };
 
 export { decodeGroupId, encodeGroupId };
@@ -65,6 +69,8 @@ export type GroupedCatalogFilter = {
   precioMax?: number;
   inStock?: boolean;
   sort?: CatalogSortOption;
+  destacado?: boolean;
+  novedad?: boolean;
 };
 
 // --- Legacy fallback (agrupación por nombre en Product) ---
