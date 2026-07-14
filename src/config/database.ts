@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { ensureOrderIndexes } from '../models/Order';
 
 export const connectDatabase = async (): Promise<void> => {
   let mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/icoltexdb';
@@ -63,6 +64,8 @@ export const connectDatabase = async (): Promise<void> => {
     const dbName = mongoose.connection.db?.databaseName;
     console.log(`✅ MongoDB conectado exitosamente`);
     console.log(`📦 Base de datos: ${dbName || 'icoltexdb'}`);
+
+    await ensureOrderIndexes();
   } catch (error: any) {
     console.error('❌ Error conectando a MongoDB:', error.message);
     console.error('🔍 Error completo:', error);

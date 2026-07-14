@@ -11,9 +11,11 @@ import usersRoutes from './users.routes';
 import syncRoutes from './sync.routes';
 import catalogRoutes from './catalog.routes';
 import driveRoutes from './drive.routes';
+import ordersRoutes from './orders.routes';
 
 const router = Router();
 
+router.use('/', ordersRoutes);
 router.use('/admins', adminsRoutes);
 router.use('/auth', authRoutes);
 router.use('/categories', categoriesRoutes);
