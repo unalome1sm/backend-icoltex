@@ -10,10 +10,22 @@ export type VariantFilterable = {
   precioKilos?: number;
 };
 
+export type GroupFiltrosFilterable = {
+  filtro1: string[];
+  filtro2: string[];
+  filtro3: string[];
+};
+
 export type GroupFilterable = {
   nombreVitrina: string;
   claseFamilia?: string;
   categoria?: string;
+  descripcionCorta?: string;
+  descripcionLarga?: string;
+  caracteristicas?: string;
+  usos?: string;
+  cuidados?: string;
+  filtros?: GroupFiltrosFilterable[];
   variantes: VariantFilterable[];
   esDestacado?: boolean;
   esNovedad?: boolean;
@@ -29,25 +41,73 @@ function matchesIgnoreCase(value: string, target: string): boolean {
   return value.trim().toLocaleLowerCase('es') === target.trim().toLocaleLowerCase('es');
 }
 
+function collectFiltroValues(
+  filtros: GroupFiltrosFilterable[] | undefined,
+  key: 'filtro1' | 'filtro2' | 'filtro3'
+): string[] {
+  if (!filtros?.length) return [];
+  const out: string[] = [];
+  for (const f of filtros) {
+    for (const v of f[key] ?? []) {
+      if (v?.trim()) out.push(v.trim());
+    }
+  }
+  return out;
+}
+
+function matchesAnyFiltroValue(groupValues: string[], wanted: string[]): boolean {
+  return wanted.some((w) => groupValues.some((g) => matchesIgnoreCase(g, w)));
+}
+
 export function groupMatchesCatalogFilter(
   group: GroupFilterable,
   filter: GroupedCatalogFilter
 ): boolean {
-  if (filter.classFamily?.trim()) {
-    const rx = filter.classFamily.trim();
-    if (!group.claseFamilia || !new RegExp(`^${escapeRegex(rx)}$`, 'i').test(group.claseFamilia)) {
+  if (filter.nombre?.trim()) {
+    if (!matchesIgnoreCase(group.nombreVitrina, filter.nombre)) {
       return false;
     }
   }
 
-  if (filter.categories?.length) {
-    const cat = group.categoria?.trim() ?? '';
-    const ok = filter.categories.some((c) => matchesIgnoreCase(cat, c));
-    if (!ok) return false;
-  } else if (filter.category?.trim()) {
-    const rx = filter.category.trim();
-    if (!group.categoria || !new RegExp(rx, 'i').test(group.categoria)) {
+  if (filter.filtro1?.trim()) {
+    const values = collectFiltroValues(group.filtros, 'filtro1');
+    if (!values.some((v) => matchesIgnoreCase(v, filter.filtro1!))) {
       return false;
+    }
+  }
+
+  if (filter.filtro2?.length) {
+    const values = collectFiltroValues(group.filtros, 'filtro2');
+    if (!matchesAnyFiltroValue(values, filter.filtro2)) {
+      return false;
+    }
+  }
+
+  if (filter.filtro3?.length) {
+    const values = collectFiltroValues(group.filtros, 'filtro3');
+    if (!matchesAnyFiltroValue(values, filter.filtro3)) {
+      return false;
+    }
+  }
+
+  // Legacy Product-path filters (solo si no vino taxonomía comercial)
+  if (!filter.filtro1 && !filter.filtro2?.length && !filter.filtro3?.length) {
+    if (filter.classFamily?.trim()) {
+      const rx = filter.classFamily.trim();
+      if (!group.claseFamilia || !new RegExp(`^${escapeRegex(rx)}$`, 'i').test(group.claseFamilia)) {
+        return false;
+      }
+    }
+
+    if (filter.categories?.length) {
+      const cat = group.categoria?.trim() ?? '';
+      const ok = filter.categories.some((c) => matchesIgnoreCase(cat, c));
+      if (!ok) return false;
+    } else if (filter.category?.trim()) {
+      const rx = filter.category.trim();
+      if (!group.categoria || !new RegExp(rx, 'i').test(group.categoria)) {
+        return false;
+      }
     }
   }
 
@@ -57,7 +117,12 @@ export function groupMatchesCatalogFilter(
     const inGroup =
       re.test(group.nombreVitrina) ||
       re.test(group.claseFamilia ?? '') ||
-      re.test(group.categoria ?? '');
+      re.test(group.categoria ?? '') ||
+      re.test(group.descripcionCorta ?? '') ||
+      re.test(group.descripcionLarga ?? '') ||
+      re.test(group.caracteristicas ?? '') ||
+      re.test(group.usos ?? '') ||
+      re.test(group.cuidados ?? '');
     const inVariant = group.variantes.some(
       (v) =>
         re.test(v.colorLabel) ||

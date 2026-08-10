@@ -1,5 +1,8 @@
 import nodemailer from 'nodemailer';
 
+const SEND_ERROR_MESSAGE =
+  'No se pudo enviar el correo de verificación. Intenta de nuevo más tarde.';
+
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
   port: Number(process.env.SMTP_PORT) || 587,
@@ -8,6 +11,9 @@ const transporter = nodemailer.createTransport({
     user: process.env.SMTP_USER || '',
     pass: process.env.SMTP_PASS || '',
   },
+  connectionTimeout: 10_000,
+  greetingTimeout: 10_000,
+  socketTimeout: 15_000,
 });
 
 const FROM = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@icoltex.com';
@@ -30,11 +36,17 @@ export async function sendVerificationCode(to: string, code: string, purpose: 'r
     </div>
   `;
 
-  await transporter.sendMail({
-    from: FROM,
-    to,
-    subject,
-    html,
-    text: `Tu código de verificación es: ${code}. Expira en ${process.env.AUTH_OTP_TTL_MINUTES || 10} minutos.`,
-  });
+  try {
+    await transporter.sendMail({
+      from: FROM,
+      to,
+      subject,
+      html,
+      text: `Tu código de verificación es: ${code}. Expira en ${process.env.AUTH_OTP_TTL_MINUTES || 10} minutos.`,
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error('[email] sendVerificationCode failed:', detail);
+    throw new Error(SEND_ERROR_MESSAGE);
+  }
 }

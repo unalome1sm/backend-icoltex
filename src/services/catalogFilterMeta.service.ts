@@ -3,13 +3,21 @@ import { Product } from '../models/Product';
 import { buildMergedCatalogRows } from './mergedCatalog.service';
 
 export type CatalogFilterMeta = {
-  clases: string[];
-  categoriasByClase: Record<string, string[]>;
+  /** Líneas comerciales (filtro1) */
+  lineas: string[];
+  usosByLinea: Record<string, string[]>;
+  prendasByLinea: Record<string, string[]>;
+  /** nombreVitrina por línea comercial */
+  productosByLinea: Record<string, string[]>;
   colores: string[];
   precioMin: number | null;
   precioMax: number | null;
   totalGroups: number;
   totalVariants: number;
+  /** @deprecated Admin / legado técnico — claseFamilia */
+  clases: string[];
+  /** @deprecated Admin / legado técnico */
+  categoriasByClase: Record<string, string[]>;
 };
 
 function sortEs(values: string[]): string[] {
@@ -26,6 +34,11 @@ function variantDisplayPrice(v: {
   return v.precioMetro ?? v.precioKilos;
 }
 
+function addToMapSet(map: Map<string, Set<string>>, key: string, value: string) {
+  if (!map.has(key)) map.set(key, new Set());
+  map.get(key)!.add(value);
+}
+
 /**
  * Metadata de filtros derivada del catálogo vitrina + precios (misma base que /shop).
  */
@@ -37,6 +50,10 @@ export async function fetchCatalogFilterMeta(): Promise<CatalogFilterMeta> {
   }
 
   const groups = await buildMergedCatalogRows({});
+  const lineasSet = new Set<string>();
+  const usosMap = new Map<string, Set<string>>();
+  const prendasMap = new Map<string, Set<string>>();
+  const productosMap = new Map<string, Set<string>>();
   const clasesSet = new Set<string>();
   const categoriasMap = new Map<string, Set<string>>();
   const coloresSet = new Set<string>();
@@ -48,10 +65,29 @@ export async function fetchCatalogFilterMeta(): Promise<CatalogFilterMeta> {
     const clase = group.claseFamilia?.trim();
     if (clase) {
       clasesSet.add(clase);
-      if (!categoriasMap.has(clase)) categoriasMap.set(clase, new Set());
       if (group.categoria?.trim()) {
-        categoriasMap.get(clase)!.add(group.categoria.trim());
+        addToMapSet(categoriasMap, clase, group.categoria.trim());
       }
+    }
+
+    const lineasFromFiltros = new Set<string>();
+    for (const f of group.filtros ?? []) {
+      for (const l of f.filtro1 ?? []) {
+        const linea = l.trim();
+        if (!linea) continue;
+        lineasSet.add(linea);
+        lineasFromFiltros.add(linea);
+        for (const u of f.filtro2 ?? []) {
+          if (u.trim()) addToMapSet(usosMap, linea, u.trim());
+        }
+        for (const p of f.filtro3 ?? []) {
+          if (p.trim()) addToMapSet(prendasMap, linea, p.trim());
+        }
+      }
+    }
+
+    for (const linea of lineasFromFiltros) {
+      addToMapSet(productosMap, linea, group.nombreVitrina);
     }
 
     for (const v of group.variantes) {
@@ -65,19 +101,35 @@ export async function fetchCatalogFilterMeta(): Promise<CatalogFilterMeta> {
     }
   }
 
+  const usosByLinea: Record<string, string[]> = {};
+  for (const [linea, usos] of usosMap) {
+    usosByLinea[linea] = sortEs([...usos]);
+  }
+  const prendasByLinea: Record<string, string[]> = {};
+  for (const [linea, prendas] of prendasMap) {
+    prendasByLinea[linea] = sortEs([...prendas]);
+  }
+  const productosByLinea: Record<string, string[]> = {};
+  for (const [linea, productos] of productosMap) {
+    productosByLinea[linea] = sortEs([...productos]);
+  }
   const categoriasByClase: Record<string, string[]> = {};
   for (const [clase, cats] of categoriasMap) {
     categoriasByClase[clase] = sortEs([...cats]);
   }
 
   return {
-    clases: sortEs([...clasesSet]),
-    categoriasByClase,
+    lineas: sortEs([...lineasSet]),
+    usosByLinea,
+    prendasByLinea,
+    productosByLinea,
     colores: sortEs([...coloresSet]),
     precioMin,
     precioMax,
     totalGroups: groups.length,
     totalVariants,
+    clases: sortEs([...clasesSet]),
+    categoriasByClase,
   };
 }
 
@@ -92,11 +144,8 @@ async function buildLegacyFilterMeta(): Promise<CatalogFilterMeta> {
   for (const p of products) {
     if (p.claseFamilia?.trim()) {
       clasesSet.add(p.claseFamilia.trim());
-      if (!categoriasMap.has(p.claseFamilia.trim())) {
-        categoriasMap.set(p.claseFamilia.trim(), new Set());
-      }
       if (p.categoria?.trim()) {
-        categoriasMap.get(p.claseFamilia.trim())!.add(p.categoria.trim());
+        addToMapSet(categoriasMap, p.claseFamilia.trim(), p.categoria.trim());
       }
     }
     if (p.colores?.trim()) coloresSet.add(p.colores.trim());
@@ -113,13 +162,17 @@ async function buildLegacyFilterMeta(): Promise<CatalogFilterMeta> {
   }
 
   return {
-    clases: sortEs([...clasesSet]),
-    categoriasByClase,
+    lineas: [],
+    usosByLinea: {},
+    prendasByLinea: {},
+    productosByLinea: {},
     colores: sortEs([...coloresSet]),
     precioMin,
     precioMax,
     totalGroups: products.length,
     totalVariants: products.length,
+    clases: sortEs([...clasesSet]),
+    categoriasByClase,
   };
 }
 

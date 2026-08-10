@@ -9,6 +9,10 @@ export function parseCatalogFilterFromRequest(req: Request): GroupedCatalogFilte
     category,
     categories,
     classFamily,
+    filtro1,
+    filtro2,
+    filtro3,
+    nombre,
     color,
     colors,
     q,
@@ -26,6 +30,21 @@ export function parseCatalogFilterFromRequest(req: Request): GroupedCatalogFilte
   if (activo === 'true') filter.activo = true;
   if (activo === 'false') filter.activo = false;
 
+  if (typeof filtro1 === 'string' && filtro1.trim()) {
+    filter.filtro1 = filtro1.trim();
+  }
+
+  const filtro2List = parseListParam(filtro2);
+  filter.filtro2 = normalizeFilterList(filtro2List);
+
+  const filtro3List = parseListParam(filtro3);
+  filter.filtro3 = normalizeFilterList(filtro3List);
+
+  if (typeof nombre === 'string' && nombre.trim()) {
+    filter.nombre = nombre.trim();
+  }
+
+  // Legacy (admin / productos SKU)
   if (typeof classFamily === 'string' && classFamily.trim()) {
     filter.classFamily = classFamily.trim();
   }

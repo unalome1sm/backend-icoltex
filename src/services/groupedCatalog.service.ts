@@ -24,6 +24,7 @@ export type GroupedProductVariant = {
   mongoId: string;
   codigo: string;
   colorLabel: string;
+  colorHex?: string;
   codigoTono?: string;
   itemNameCompleto: string;
   stock: number;
@@ -44,6 +45,11 @@ export type GroupedProductRow = {
   nombreVitrina: string;
   claseFamilia?: string;
   categoria?: string;
+  descripcionCorta?: string;
+  descripcionLarga?: string;
+  caracteristicas?: string;
+  usos?: string;
+  cuidados?: string;
   imageUrls?: string[];
   filtros?: { filtro1: string[]; filtro2: string[]; filtro3: string[] }[];
   variantes: GroupedProductVariant[];
@@ -59,10 +65,18 @@ export type CatalogSortOption = 'relevance' | 'price-asc' | 'price-desc' | 'name
 
 export type GroupedCatalogFilter = {
   activo?: boolean;
-  /** @deprecated Usar categories */
+  /** @deprecated Legacy Product path only */
   category?: string;
+  /** @deprecated Legacy Product path only */
   categories?: string[];
+  /** @deprecated Legacy Product path only */
   classFamily?: string;
+  /** Línea comercial (filtro1) */
+  filtro1?: string;
+  filtro2?: string[];
+  filtro3?: string[];
+  /** Match exacto sobre nombreVitrina */
+  nombre?: string;
   colors?: string[];
   q?: string;
   precioMin?: number;

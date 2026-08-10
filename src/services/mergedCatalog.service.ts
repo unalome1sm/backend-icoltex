@@ -17,6 +17,7 @@ export type MergedProductVariant = {
   mongoId: string;
   codigo: string;
   colorLabel: string;
+  colorHex?: string;
   codigoTono?: string;
   itemNameCompleto: string;
   stock: number;
@@ -37,6 +38,11 @@ export type MergedProductRow = {
   nombreVitrina: string;
   claseFamilia?: string;
   categoria?: string;
+  descripcionCorta?: string;
+  descripcionLarga?: string;
+  caracteristicas?: string;
+  usos?: string;
+  cuidados?: string;
   imageUrls?: string[];
   filtros?: ICatalogVitrinaFiltros[];
   variantes: MergedProductVariant[];
@@ -59,6 +65,10 @@ function hasPrice(product: IProduct | undefined): boolean {
   );
 }
 
+function isNoUtilizarVariant(itemNameCompleto: string): boolean {
+  return /^NO\s*UTILIZAR\b/i.test(itemNameCompleto.trim());
+}
+
 function resolveVariantImageUrls(
   product?: IProduct,
   groupImageUrls?: string[]
@@ -70,6 +80,7 @@ function resolveVariantImageUrls(
 
 function mergeVariant(
   vitrinaVariant: ICatalogVitrinaGroup['variantes'][number],
+  group: Pick<ICatalogVitrinaGroup, 'usos' | 'cuidados'>,
   product?: IProduct,
   groupImageUrls?: string[]
 ): MergedProductVariant {
@@ -80,6 +91,7 @@ function mergeVariant(
     mongoId: plain?._id ? String(plain._id) : vitrinaVariant.codigo,
     codigo: vitrinaVariant.codigo,
     colorLabel: vitrinaVariant.colorLabel,
+    colorHex: vitrinaVariant.colorHex || undefined,
     codigoTono: extractCodigoTono(itemName),
     itemNameCompleto: itemName,
     stock: vitrinaVariant.stock,
@@ -88,8 +100,8 @@ function mergeVariant(
     activo: vitrinaVariant.activo,
     imageUrls: resolveVariantImageUrls(product, groupImageUrls),
     caracteristica: vitrinaVariant.caracteristica ?? plain?.caracteristica,
-    recomendacionesUsos: plain?.recomendacionesUsos,
-    recomendacionesCuidados: plain?.recomendacionesCuidados,
+    recomendacionesUsos: group.usos?.trim() || plain?.recomendacionesUsos,
+    recomendacionesCuidados: group.cuidados?.trim() || plain?.recomendacionesCuidados,
     unidadMedida: vitrinaVariant.unidadMedida ?? plain?.unidadMedida,
     tienePrecio: hasPrice(product),
   };
@@ -161,7 +173,8 @@ export async function buildMergedCatalogRows(
     const groupImageUrls = group.imageUrls?.length ? group.imageUrls : undefined;
 
     const variantes = group.variantes
-      .map((v) => mergeVariant(v, productsByCodigo.get(v.codigo), groupImageUrls))
+      .filter((v) => !isNoUtilizarVariant(v.itemNameCompleto))
+      .map((v) => mergeVariant(v, group, productsByCodigo.get(v.codigo), groupImageUrls))
       .filter((v) => variantMatchesCatalogFilter(v, filter, requirePrice))
       .sort(sortVariantes);
 
@@ -182,6 +195,11 @@ export async function buildMergedCatalogRows(
       nombreVitrina: group.nombreVitrina,
       claseFamilia: group.claseFamilia || undefined,
       categoria: group.categoria || undefined,
+      descripcionCorta: group.descripcionCorta || undefined,
+      descripcionLarga: group.descripcionLarga || undefined,
+      caracteristicas: group.caracteristicas || undefined,
+      usos: group.usos || undefined,
+      cuidados: group.cuidados || undefined,
       imageUrls: rowImageUrls,
       filtros: group.filtros?.length ? group.filtros : undefined,
       variantes,

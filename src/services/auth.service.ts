@@ -84,7 +84,14 @@ export async function registerRequest(email: string): Promise<{ ok: boolean; mes
     purpose: 'register',
     expiresAt,
   });
-  await sendVerificationCode(email, code, 'register');
+  try {
+    await sendVerificationCode(email, code, 'register');
+  } catch (err) {
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : 'No se pudo enviar el correo de verificación. Intenta de nuevo más tarde.',
+    };
+  }
   return { ok: true, message: 'Código enviado a tu correo' };
 }
 
@@ -162,7 +169,14 @@ export async function loginRequest(email: string, password: string): Promise<{ o
     purpose: 'login',
     expiresAt,
   });
-  await sendVerificationCode(email, code, 'login');
+  try {
+    await sendVerificationCode(email, code, 'login');
+  } catch (err) {
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : 'No se pudo enviar el correo de verificación. Intenta de nuevo más tarde.',
+    };
+  }
   return { ok: true, message: 'Código enviado a tu correo' };
 }
 
@@ -226,7 +240,14 @@ export async function adminLoginRequest(email: string, password: string): Promis
     purpose: 'admin_login',
     expiresAt,
   });
-  await sendVerificationCode(email, code, 'login');
+  try {
+    await sendVerificationCode(email, code, 'login');
+  } catch (err) {
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : 'No se pudo enviar el correo de verificación. Intenta de nuevo más tarde.',
+    };
+  }
   return { ok: true, message: 'Código enviado a tu correo' };
 }
 
